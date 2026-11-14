@@ -668,10 +668,10 @@ renderDashboard();
  function applySelection(info){
  const prev=active;active=info;window.aymActiveProperty={...info};
  if(info.state&&fips[info.state]){setAuctionLocation(info.state,info.county);if($id('mapState'))$id('mapState').value=info.state;}
- if(info.address&&$id('aymQuickQuery'))$id('aymQuickQuery').value=info.address;
- if(info.city&&$id('mapCity'))$id('mapCity').value=info.city;
- if(info.zip&&$id('mapZip'))$id('mapZip').value=info.zip;
- if(info.address&&$id('mapQuery'))$id('mapQuery').value=info.address;
+ if($id('aymQuickQuery'))$id('aymQuickQuery').value=info.address||'';
+ if($id('mapCity'))$id('mapCity').value=info.city||'';
+ if($id('mapZip'))$id('mapZip').value=info.zip||'';
+ if($id('mapQuery'))$id('mapQuery').value=info.address||'';
  clearAnalysisForNewProperty(info.address||'',info.apn||'');
  }
  async function reverseAt(point,request){
@@ -685,18 +685,33 @@ renderDashboard();
  }
  function install(){const state=$id('auctionState');if(!state)return;setStateOptions();updateCounties();state.addEventListener('change',()=>updateCounties());
  $id('lang')?.addEventListener('change',()=>{const selected=state.value,county=$id('auctionCounty').value;setStateOptions();state.value=selected;updateCounties(county)});
- // GIS selection keeps its official APN/geometry; reverse geocoding supplies only approximate postal context.
+ // Select a single property context after GIS finishes. Reverse geocoding must never overwrite official GIS data.
  if(typeof aymSelectMapParcel==='function'){
- const original=aymSelectMapParcel;aymSelectMapParcel=async function(point){const request=++selectionReq;
- applySelection({address:'',city:'',state:'',county:'',zip:'',apn:'',lat:point.lat,lng:point.lng,source:'pending'});
- try{await original(point)}finally{if(request===selectionReq){const official=typeof selectedAddress==='string'?selectedAddress:'';const apn=typeof selectedAPN==='string'?selectedAPN:'';
- await reverseAt(point,request);if(request===selectionReq&&apn){active.apn=apn;window.aymActiveProperty.apn=apn;current.apn=apn;if($id('f_apn'))$id('f_apn').value=apn;try{localStorage.setItem('aym_draft',JSON.stringify(current))}catch(e){}}
- if(request===selectionReq&&official){active.address=official;window.aymActiveProperty.address=official;current.address=official;if($id('f_address'))$id('f_address').value=official;if($id('mapAddress'))$id('mapAddress').textContent='Dirección GIS: '+official;try{localStorage.setItem('aym_draft',JSON.stringify(current))}catch(e){}}}}
+ const original=aymSelectMapParcel;
+ aymSelectMapParcel=async function(point){
+  const request=++selectionReq;
+  applySelection({address:'',city:'',state:'',county:'',zip:'',apn:'',lat:point.lat,lng:point.lng,source:'pending'});
+  await original(point);
+  if(request!==selectionReq)return;
+  const officialAddress=String(selectedAddress||'').trim();
+  const officialAPN=String(selectedAPN||'').trim();
+  if(officialAPN){
+   // Keep official parcel identity, and use approximate postal metadata only where needed.
+   let postal={};
+   try{
+    const u='https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat='+encodeURIComponent(point.lat)+'&lon='+encodeURIComponent(point.lng);
+    const r=await fetch(u,{headers:{Accept:'application/json'}});
+    if(r.ok){const data=await r.json();const a=data.address||{};postal={city:a.city||a.town||a.village||a.hamlet||'',state:names[a['ISO3166-2-lvl4']?.split('-')[1]]||a.state||'',county:a.county||'',zip:a.postcode||''}}
+   }catch(e){console.warn('Postal context unavailable',e)}
+   if(request!==selectionReq)return;
+   applySelection({...postal,address:officialAddress,apn:officialAPN,source:'county GIS parcel',lat:point.lat,lng:point.lng});
+  }else{
+   await reverseAt(point,request);
+  }
  };
  }
- // Search results with a known address also update the selected context when a GIS address is available.
- const node=$id('mapAddress');if(node){new MutationObserver(()=>{const text=node.textContent||'';if(!text||/pendiente|unknown|marked|ubicación marcada/i.test(text))return;
- const apn=$id('mapAPN')?.textContent||'';if(apn!=='—'&&active&&apn!==active.apn){active.apn=apn;window.aymActiveProperty={...active};current.apn=apn;if($id('f_apn'))$id('f_apn').value=apn;try{localStorage.setItem('aym_draft',JSON.stringify(current))}catch(e){}}}).observe(node,{childList:true,characterData:true,subtree:true})}
+ // No DOM text observer: map labels are not a reliable source of parcel identity.
+
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
  window.aymSetAuctionLocation=setAuctionLocation;
@@ -721,7 +736,7 @@ renderDashboard();
    const mapState=el('mapState');if(mapState){mapState.value='';mapState.addEventListener('change',updateFromSearch)}
    const button=el('mapSearchBtn');if(button)button.addEventListener('click',updateFromSearch);
    // Change the displayed header to reflect the actual patch version.
-   const tag=el('demoTag');if(tag)tag.textContent='V6.1 · PRUEBA GIS';
+   const tag=el('demoTag');if(tag)tag.textContent='V6.2 · PRUEBA GIS';
    // Remove misleading artificial bell drawn with CSS, preserve native header control.
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
