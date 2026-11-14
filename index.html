@@ -460,7 +460,24 @@ async function searchMap(){const searchToken=++aymMapClickSequence;++aymLookupSe
 }
 
 function locateMe(){initMap();if(!navigator.geolocation){mapMsg('Este navegador no admite GPS.','GPS unavailable in this browser.');return}mapMsg('Solicitando permiso de ubicación…','Requesting location permission…');navigator.geolocation.getCurrentPosition(p=>{const c=L.latLng(p.coords.latitude,p.coords.longitude);if(positionMarker)propertyMap.removeLayer(positionMarker);positionMarker=L.circleMarker(c,{radius:9,color:'#fff',weight:3,fillColor:'#278cfe',fillOpacity:1}).addTo(propertyMap).bindPopup(lang==='es'?'Mi ubicación aproximada':'My approximate location');propertyMap.setView(c,17);mapMsg('GPS mostrado. Para identificar propietarios, selecciona el estado y condado correctos; la búsqueda por toque solo está conectada en Schuylkill y parcialmente en Monroe.','GPS shown. Select the correct state and county; tap-to-parcel lookup currently supports Schuylkill and partially Monroe.')},()=>mapMsg('Ubicación denegada o no disponible. Actívala en el navegador.','Location denied or unavailable. Enable browser location.'),{enableHighAccuracy:true,timeout:12000})}
-function openCountyGIS(){syncNationalCounty();const c=$('mapCounty').value;if(c==='Other'){const q=[$('mapCountyName').value,'County GIS parcel viewer',$('mapState').value].join(' ');window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener,noreferrer');mapMsg('Búsqueda de portal GIS externo; comprueba que sea el sitio oficial del condado.','External GIS portal search; verify the county official site.');return}window.open(countyGIS[c],'_blank','noopener,noreferrer')}
+function openCountyGIS(){
+ const state=(searchMode==='parcel'?$('parcelState').value:$('mapState').value);
+ const city=($('mapCity').value||'').trim().toLowerCase();
+ const address=(selectedAddress||$('mapQuery').value||'').toLowerCase();
+ const apn=(selectedAPN||$('parcelQuery').value||'').trim();
+ let c=syncNationalCounty();
+ // Prefer the county of the selected property over an old county form selection.
+ if(state==='Pennsylvania'&&(city==='pottsville'||/\bpottsville\b/.test(address)||normalizeParcel(apn)===normalizeParcel('68-20-0270.000')))c='Schuylkill County, Pennsylvania';
+ if(c==='Other'){
+   const countyName=$('mapCountyName').value.trim();
+   if(!countyName){mapMsg('Indica el condado antes de abrir su GIS.','Enter the county before opening its GIS.');return;}
+   const q=[countyName,'County GIS parcel viewer',state].join(' ');
+   window.open('https://www.google.com/search?q='+encodeURIComponent(q),'_blank','noopener,noreferrer');
+   mapMsg('No hay enlace GIS verificado para este condado. Verifica el resultado antes de usarlo.','No verified GIS link for this county. Check the result before using it.');return;
+ }
+ $('mapCounty').value=c;
+ window.open(countyGIS[c],'_blank','noopener,noreferrer');
+}
 function offerUnverifiedAPN(){const q=$('parcelQuery').value.trim();if(!q)return;$('parcelFallback').classList.remove('hide');$('parcelFallbackTitle').textContent=(lang==='es'?'APN no localizado: ':'APN not located: ')+q;$('parcelFallbackText').textContent=lang==='es'?'Puedes continuar con el análisis manual. No se han confirmado dirección, ubicación, propietario, límites ni deudas.':'You can proceed with manual analysis. Address, location, owner, boundaries and debts are unverified.';$('parcelFallbackBtn').textContent=lang==='es'?'Analizar este APN sin verificar':'Analyze this unverified APN';}
 function searchKnownParcelAddress(){
  const apn=$('parcelQuery').value.trim(),county=$('mapCountyName').value.trim(),state=$('parcelState').value;
